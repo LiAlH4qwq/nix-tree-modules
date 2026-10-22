@@ -10,8 +10,9 @@ The library walks a module tree and translates each module into a plain Nix
 module with a generated public `enable`, a computed read-only final, and
 optional premise gating over other switches.
 
-It is **pure utilities**. It must not contain scope definitions, settings, or
-option-namespace data — the caller passes a scope registry in. See
+It is **pure utilities plus the scope registry schema**. It must not contain
+concrete scope definitions, a namespace value, or a dependency DAG — the caller
+supplies those as modules and evaluates them with `mkScopes`. See
 [README.md](./README.md) for the full DSL documentation.
 
 ## Layout
@@ -20,6 +21,7 @@ option-namespace data — the caller passes a scope registry in. See
 | --- | --- |
 | `flake.nix` | Flake outputs (`lib`, `checks`, `formatter`). |
 | `src/default.nix` | Public entry point; re-exports the utilities. |
+| `src/scopes.nix` | Scope registry schema + evaluator (`scopeModule`, `mkScopes`). |
 | `src/switch.nix` | Switch translation + cross-scope premise resolution. |
 | `src/tree.nix` | Strict tree walker. |
 | `src/tests/` | Regression tests: a small example tree + assertions. |
@@ -36,8 +38,9 @@ nix build .#checks.x86_64-linux.switch   # the single test derivation
 
 ## Design invariants
 
-- **No settings.** `src/` is library code only. The scope registry, option
-  namespace, and all policy belong to the caller.
+- **No concrete settings.** `src/` owns the scope registry *schema* and
+  evaluator, but the registry data (namespace, scope roots, dependency DAG) and
+  all policy belong to the caller.
 - Keep the strict tree walker strict: only `default.nix` is a module, `_`-prefixed
   entries are skipped, and any other `*.nix` in a walked tree is a hard error.
 - `translateModule` output must remain a valid, ordinary Nix module — normal

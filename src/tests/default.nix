@@ -39,6 +39,29 @@ let
     };
   };
 
+  scopeData =
+    { config, ... }:
+    {
+      config.namespace = [ "test" ];
+      config.scopes = {
+        app = {
+          root = config.namespace ++ [ "app" ];
+          deps.home = {
+            cardinality = "many";
+            defaultQuant = "all";
+            instances = args: builtins.attrValues args.config.homes;
+          };
+        };
+        base.root = [ "test" "base" ];
+        off = {
+          root = config.namespace ++ [ "off" ];
+          switches = false;
+        };
+      };
+    };
+
+  evaluatedScopes = L.mkScopes { modules = [ scopeData ]; };
+
   evalCfg =
     extra:
     (lib.evalModules {
@@ -156,4 +179,29 @@ in
   groupMarkerOff = c0.liuxu.app.group.gmark == "off";
   groupOn = c2.liuxu.app.internal.final.group.enable;
   groupMarkerOn = c2.liuxu.app.group.gmark == "on";
+
+  scopeRoot = evaluatedScopes.app.root == [
+    "test"
+    "app"
+  ];
+  scopeInternalDefault = evaluatedScopes.app.internal == [
+    "test"
+    "app"
+    "internal"
+  ];
+  scopeSwitchesDefault = evaluatedScopes.base.switches;
+  scopeSwitchesOff = !evaluatedScopes.off.switches;
+  scopeDepsDefault = evaluatedScopes.base.deps == { };
+  scopeDepCardinality = evaluatedScopes.app.deps.home.cardinality == "many";
+  scopeDepDefaultQuant = evaluatedScopes.app.deps.home.defaultQuant == "all";
+  scopeDepInstances =
+    evaluatedScopes.app.deps.home.instances {
+      config.homes = {
+        u1 = "one";
+        u2 = "two";
+      };
+    } == [
+      "one"
+      "two"
+    ];
 }

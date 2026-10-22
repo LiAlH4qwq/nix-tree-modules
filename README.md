@@ -10,14 +10,15 @@ translates each module into a plain Nix module with a generated public
 `enable`, a computed read-only final, and (optionally) premise gating over
 other switches in the same or a related scope.
 
-It has no opinions about scopes, option namespaces, or settings — a scope
-registry is passed in by the caller. This package only contains the pure
-utilities.
+It has no concrete scope settings: the scope registry schema and evaluator are
+provided, while the actual namespace, scope roots and dependency DAG are
+supplied by the caller.
 
 ## Outputs
 
 - `lib` — the library (`mkTree`, `translateModule`, `evalPremise`,
-  `mkSwitchRefType`, `mkPremiseType`, `mkSwitchOptionType`).
+  `mkSwitchRefType`, `mkPremiseType`, `mkSwitchOptionType`, `scopeModule`,
+  `mkScopes`).
 - `checks.<system>.switch` — regression tests for the switch machinery.
 - `formatter.<system>` — `nixfmt`.
 
@@ -103,22 +104,47 @@ A module without `here` is imported as-is (plain module).
 
 ### Scope registry
 
-`mkTree` takes a `scopes` registry describing, per scope, its option `root` and
-its allowed premise `deps`. The registry is plain data evaluated by the caller
-(e.g. through `lib.evalModules`); it is forwarded verbatim and never reinterpreted
-here.
+The library ships the registry *schema* and evaluator, not a registry. The
+caller supplies ordinary modules setting `config.namespace` and
+`config.scopes`; `mkScopes` merges them with `scopeModule` and evaluates them:
 
-- `scopes.<name>.root` — option path prefix of the scope.
+```nix
+{
+  config.namespace = [ "liuxu" ];
+  config.scopes.nixos = {
+    root = config.namespace ++ [ "nixos" ];
+    deps.home = {
+      cardinality = "many";
+      instances = args: builtins.attrValues args.config.home-manager.users;
+    };
+  };
+}
+```
+
+```nix
+lib.nix-tree-modules.mkScopes {
+  modules = [ ./scopes ];
+}
+```
+
+`mkScopes` returns the evaluated `scopes` registry; `scopeModule` is exported
+for callers that want to compose it into their own `lib.evalModules` call.
+
+- `scopes.<name>.root` — option path prefix of the scope (required).
 - `scopes.<name>.deps.<to>` — allowed premise edges with `cardinality`
   (`one`/`many`), `defaultQuant` (`any`/`all`), optional `prefix`, and
   `instances` (`args -> [ instanceConfig ]`, required for `many`).
 - `scopes.<name>.switches` — set to `false` to disable switch generation in a
   scope (options-only scopes).
 
+`mkTree` takes the resulting registry and forwards it verbatim; it is never
+reinterpreted here.
+
 ## Layout
 
 ```
 src/default.nix   public entry point (re-exports)
+src/scopes.nix    scope registry schema + evaluator
 src/switch.nix    switch translation + cross-scope premise resolution
 src/tree.nix      strict tree walker
 src/tests/        regression tests (a small example tree + assertions)
